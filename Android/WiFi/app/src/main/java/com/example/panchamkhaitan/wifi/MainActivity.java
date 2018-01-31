@@ -1,7 +1,9 @@
 package com.example.panchamkhaitan.wifi;
 import android.annotation.SuppressLint;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -18,10 +20,22 @@ import android.content.IntentFilter;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 
+import com.couchbase.lite.CouchbaseLiteException;
+import com.couchbase.lite.Database;
+import com.couchbase.lite.Document;
+import com.couchbase.lite.Manager;
+import com.couchbase.lite.android.AndroidContext;
+import com.couchbase.lite.replicator.Replication;
+
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -34,10 +48,13 @@ public class MainActivity extends AppCompatActivity {
     //int freq[] = new int[15];
     String bssid[] = new String[15];
     //double distance[] = new double[15];
+    ArrayList<Double> distance1 = new ArrayList<>();
     //int count=0;
     //StringBuffer buffer = new StringBuffer();
     Context context;
     Button mapsButton,positionButton;
+    Manager manager = null;
+    Database database = null;
 
     @SuppressLint("WifiManagerLeak")
     @Override
@@ -77,6 +94,104 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        positionButton = (Button) findViewById(R.id.position_button);
+
+        positionButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                position(distance1);
+//                Toast.makeText(context, position(distance1), Toast.LENGTH_SHORT).show();
+                AlertDialog.Builder builder;
+                if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    builder = new AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert);
+                } else {
+                    builder = new AlertDialog.Builder(context);
+                }
+
+                builder.setTitle("Position in Cartesian")
+                        .setMessage(position(distance1))
+                        .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+
+                                }
+                        })
+                        .setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+
+                            }
+                        })
+                        .setIcon(android.R.drawable.ic_dialog_info)
+                        .show();
+                }
+        });
+
+        // Create a manager
+
+        try {
+            manager = new Manager(new AndroidContext(getApplicationContext()), Manager.DEFAULT_OPTIONS);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        // Create or open the database named app
+
+        try {
+            database = manager.getDatabase("app");
+        } catch (CouchbaseLiteException e) {
+            e.printStackTrace();
+        }
+        // The properties that will be saved on the document
+
+        // Create replicators to push & pull changes to & from Sync Gateway.
+        URL url = null;
+        try {
+            url = new URL("http://127.0.0.1:8091/wifi");
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        }
+        Replication push = database.createPushReplication(url);
+        Replication pull = database.createPullReplication(url);
+        push.setContinuous(true);
+        pull.setContinuous(true);
+
+        // Start replicators
+        push.start();
+        pull.start();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     }
 
     @Override
@@ -115,6 +230,121 @@ public class MainActivity extends AppCompatActivity {
         toast1.show();
     }
 
+
+
+    public String position(ArrayList arrayList){
+        double r1 = (double) arrayList.get(0);
+        double r2 = (double) arrayList.get(1);
+        double r3 = (double) arrayList.get(2);
+        double p1[] = {0.0,0.0};
+        double p2[] = {5.0,0.0};
+        double p3[] = {0.0,8.0};
+        double p2p1distance = Math.pow(Math.pow(p2[0] - p1[0] , 2) + Math.pow(p2[1] - p1[1] , 2) , 0.5);
+        double exx = (p2[0] - p1[0])/p2p1distance;
+        double exy = (p2[1] - p1[1])/p2p1distance;
+        double auxx = (p3[0] - p1[0]);
+        double auxy = (p3[1] - p1[1]);
+        double i = exx * auxx + exy * auxy;
+        double aux2x = p3[0] - p1[0] - (i * exx);
+        double aux2y = p3[1] - p1[1] - (i * exy);
+        double eyx = aux2x / (Math.pow(Math.pow(aux2x,2) + Math.pow(aux2y,2) , 0.5)) ;
+        double eyy = aux2y / (Math.pow(Math.pow(aux2x,2) + Math.pow(aux2y,2) , 0.5)) ;
+        double j = eyx * auxx + eyy * auxy;
+        double x = (Math.pow(r1,2) - Math.pow(r2,2) + Math.pow(p2p1distance,2))/ (2 * p2p1distance);
+        double y = (Math.pow(r1,2) - Math.pow(r3,2) + Math.pow(i,2) + Math.pow(j,2))/(2*j) - i*x/j;
+        double finalX = (p1[0] + x * exx + y * eyx)/1000;
+        double finalY = (p1[1] + x * exy + y * eyy)/1000;
+        String ans = "X: "+finalX + "\n" + "Y: " + finalY;
+
+        Map<String, Object> properties = new HashMap<String, Object>();
+        properties.put("p1x", p1[0]);
+        properties.put("p1y", p1[1]);
+        properties.put("p2x", p2[0]);
+        properties.put("p2y", p2[1]);
+        properties.put("p3x", p3[0]);
+        properties.put("p3y", p3[1]);
+        properties.put("x", finalX);
+        properties.put("y", finalY);
+        // Create a new document
+        Document document = database.createDocument();
+        // Save the document to the database
+        try {
+            document.putProperties(properties);
+        } catch (CouchbaseLiteException e) {
+            e.printStackTrace();
+        }
+        // Log the document ID (generated by the database)
+        // and properties
+        Log.d("app", String.format("Document ID :: %s", document.getId()));
+        Log.d("app", String.format("coordinate x : %s %s , coordinate y : %s %s , coordinate z : %s %s , finalx : %s finaly : %s", document.getProperty(String.valueOf("p1x")), document.getProperty(String.valueOf("p1y")), document.getProperty(String.valueOf("p2x")), document.getProperty(String.valueOf("p2y")), document.getProperty(String.valueOf("p3x")), document.getProperty(String.valueOf("p3y")), document.getProperty(String.valueOf("x")), document.getProperty(String.valueOf("y"))));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        return ans;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    }
+
     class MyBroadCastReceiver extends BroadcastReceiver{
         @Override
         public void onReceive(final Context context, Intent intent) {
@@ -147,6 +377,7 @@ public class MainActivity extends AppCompatActivity {
                 String finalDistance = String.format("%.4f", distance);
 //                Log.v("Wifi name: ", wifiName);
 //                Log.v("Wifi MAC: ", wifiMAC);
+                distance1.add(distance);
                 WiFi wifi = new WiFi(wifiName, wifiStrength, wifiMAC , finalDistance);
                 wifiList.add(wifi);
             }
@@ -164,6 +395,7 @@ public class MainActivity extends AppCompatActivity {
 //                    toast2.show();
 //                }
 //            });
+
             if(wifiManager.isWifiEnabled())
                 callme(wifiList);
             else if(!wifiManager.isWifiEnabled())
