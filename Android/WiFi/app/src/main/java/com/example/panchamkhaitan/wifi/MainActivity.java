@@ -3,6 +3,7 @@ import android.annotation.SuppressLint;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.StrictMode;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -20,14 +21,24 @@ import android.content.IntentFilter;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.DefaultHttpClient;
+
 import com.couchbase.lite.CouchbaseLiteException;
 import com.couchbase.lite.Database;
 import com.couchbase.lite.Document;
 import com.couchbase.lite.Manager;
 import com.couchbase.lite.android.AndroidContext;
 import com.couchbase.lite.replicator.Replication;
+import com.mongodb.MongoClient;
+import com.mongodb.MongoClientURI;
+import com.mongodb.client.MongoDatabase;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
@@ -78,7 +89,8 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-
+        StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+        StrictMode.setThreadPolicy(policy);
 
         aSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener(){
 
@@ -99,7 +111,11 @@ public class MainActivity extends AppCompatActivity {
         positionButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                position(distance1);
+                try {
+                    position(distance1);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
 //                Toast.makeText(context, position(distance1), Toast.LENGTH_SHORT).show();
                 AlertDialog.Builder builder;
                 if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -108,29 +124,35 @@ public class MainActivity extends AppCompatActivity {
                     builder = new AlertDialog.Builder(context);
                 }
 
-                builder.setTitle("Position in Cartesian")
-                        .setMessage(position(distance1))
-                        .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                try {
+                    builder.setTitle("Position in Cartesian")
+                            .setMessage(position(distance1))
+                            .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialog, int which) {
+
+                                    }
+                            })
+                            .setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
                                 @Override
                                 public void onClick(DialogInterface dialog, int which) {
 
                                 }
-                        })
-                        .setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-
-                            }
-                        })
-                        .setIcon(android.R.drawable.ic_dialog_info)
-                        .show();
+                            })
+                            .setIcon(android.R.drawable.ic_dialog_info)
+                            .show();
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
+            }
         });
 
         // Create a manager
 
         try {
             manager = new Manager(new AndroidContext(getApplicationContext()), Manager.DEFAULT_OPTIONS);
+            Manager.enableLogging("Sync", Log.VERBOSE);
+
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -144,31 +166,21 @@ public class MainActivity extends AppCompatActivity {
         // The properties that will be saved on the document
 
         // Create replicators to push & pull changes to & from Sync Gateway.
-        URL url = null;
-        try {
-            url = new URL("http://127.0.0.1:8091/wifi");
-        } catch (MalformedURLException e) {
-            e.printStackTrace();
-        }
-        Replication push = database.createPushReplication(url);
-        Replication pull = database.createPullReplication(url);
-        push.setContinuous(true);
-        pull.setContinuous(true);
-
-        // Start replicators
-        push.start();
-        pull.start();
 
 
 
 
-
-
-
-
-
-
-
+//Gateway
+//
+//        MongoClientURI uri = new MongoClientURI( "mongodb://<varisbhalala>:<Varis5519>@ds123258.mlab.com:23258/wifi" );
+//        MongoClient mongoClient = new MongoClient(uri);
+//        MongoDatabase db = mongoClient.getDatabase(uri.getDatabase());
+//
+//
+//
+//
+//
+//
 
 
 
@@ -232,7 +244,7 @@ public class MainActivity extends AppCompatActivity {
 
 
 
-    public String position(ArrayList arrayList){
+    public String position(ArrayList arrayList) throws IOException {
         double r1 = (double) arrayList.get(0);
         double r2 = (double) arrayList.get(1);
         double r3 = (double) arrayList.get(2);
@@ -265,6 +277,10 @@ public class MainActivity extends AppCompatActivity {
         properties.put("p3y", p3[1]);
         properties.put("x", finalX);
         properties.put("y", finalY);
+
+
+
+
         // Create a new document
         Document document = database.createDocument();
         // Save the document to the database
@@ -278,18 +294,38 @@ public class MainActivity extends AppCompatActivity {
         Log.d("app", String.format("Document ID :: %s", document.getId()));
         Log.d("app", String.format("coordinate x : %s %s , coordinate y : %s %s , coordinate z : %s %s , finalx : %s finaly : %s", document.getProperty(String.valueOf("p1x")), document.getProperty(String.valueOf("p1y")), document.getProperty(String.valueOf("p2x")), document.getProperty(String.valueOf("p2y")), document.getProperty(String.valueOf("p3x")), document.getProperty(String.valueOf("p3y")), document.getProperty(String.valueOf("x")), document.getProperty(String.valueOf("y"))));
 
+        URL url = null;
+        try {
+            url = new URL("http://127.0.0.1:8091/wifi");
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        }
+        Replication push = database.createPushReplication(url);
+        Replication pull = database.createPullReplication(url);
+        push.setContinuous(true);
+        pull.setContinuous(true);
+
+        // Start replicators
+        push.start();
+        pull.start();
+
+
+//
+//        SvaeAsyncTask tsk = new SaveAsyncTask();
+//        tsk.execute(Final);
 
 
 
 
 
-
-
-
-
-
-
-
+//        HttpClient httpClient = new DefaultHttpClient();
+//        HttpPost request = new HttpPost("mongodb://varisbhalala:Varis5519@ds123258.mlab.com:23258/wifi");
+//        createString(p1[0],p1[1],p2[0],p2[1],p3[0],p3[1],finalX,finalY);
+//        StringEntity param = new StringEntity(createString(p1[0],p1[1],p2[0],p2[1],p3[0],p3[1],finalX,finalY));
+//        request.addHeader("content-type", "application/json");
+//        request.setEntity(param);
+//
+//        HttpResponse resp = httpClient.execute(request);
 
 
 
@@ -343,6 +379,21 @@ public class MainActivity extends AppCompatActivity {
 
 
 
+    }
+
+    public String createString(double p1x , double p1y,double p2x,double p2y,double p3x,double p3y,double finalX,double finalY){
+        return String
+                .format("{\"document\" :{\"p1x\": \"%s\" ,"
+                        +"\"p1y\": \"%s\"," +
+                        "\"p2x\": \"%s\"," +
+                        "\"p2y\": \"%s\"," +
+                        "\"p3x\": \"%s\"," +
+                        "\"p3y\": \"%s\"," +
+                        "\"finalX\": \"%s\"," +
+                        "\"finalY\": \"%s\"} ," +
+                        "\\\"safe\\\" : true}\" ," +
+                        ""
+                        ,p1x,p1y,p2x,p2y,p3x,p3y,finalX,finalY);
     }
 
     class MyBroadCastReceiver extends BroadcastReceiver{
